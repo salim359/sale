@@ -1,21 +1,21 @@
-# Sale 🛍️
+![Sale App](frontend/public/logo.png)
 
 **Sale** is a mobile-style shopping companion that watches the stores you follow and surfaces new sales and price drops as they appear.
 
 Sale is a **watcher, not a store**. It doesn't sell products directly — when you find something you like, Sale takes you to the shop's original product page to make the purchase.
 
-## ✨ Features
+## Features
 
-- 🔐 Sign up and log in (Amazon Cognito)
-- 🏪 Discover shops from a predefined catalog and follow them
-- 🛍️ Home feed shows sales **only from shops you follow**
-- 💰 Detect discounts from HTML pages, JS-rendered pages, or shop JSON APIs
-- ❤️ Save deals locally in the browser
-- 🔔 Notifications for new sales and deeper discounts
-- 🔗 Open the original shop page to purchase
-- 🚫 Unfollow a shop to stop crawling it and remove its sales from the app
+- Sign up and log in (Amazon Cognito)
+- Discover shops from a predefined catalog and follow them
+- Home feed shows sales **only from shops you follow**
+- Detect discounts from HTML pages, JS-rendered pages, or shop JSON APIs
+- Save deals locally in the browser
+- Notifications for new sales and deeper discounts
+- Open the original shop page to purchase
+- Unfollow a shop to stop crawling it and remove its sales from the app
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Frontend
 
@@ -40,7 +40,7 @@ Sale is a **watcher, not a store**. It doesn't sell products directly — when y
 - `browser` — `puppeteer-core` + `@sparticuz/chromium-min` for JS-rendered shops
 - `api` — JSON catalog fetch with field mapping (no OpenAI)
 
-## 🚀 Getting Started
+## Getting Started
 
 The app lives under `frontend/`. The API lives under `backend/`.
 
@@ -84,7 +84,7 @@ npm run deploy
 
 `npm run deploy` runs `sam build && sam deploy`. After a new stack, copy the `ApiUrl` output (without `/sales`) into `frontend/.env`.
 
-## 🔌 Deployed API
+## Deployed API
 
 Stack `sale-scout` in `us-east-1`:
 
@@ -102,7 +102,7 @@ App client     3ql4tkej8atd6n5m7hsosruqto
 
 Auth, shops, sales, and notifications all use that API base. A new Cognito pool means previous accounts do not carry over — sign up again.
 
-## 📱 What Sale Does
+## What Sale Does
 
 ### Follow shops
 
@@ -148,7 +148,7 @@ POST /notifications/{notificationId}/read
 
 Unread badges come from `sale_detected` and `discount_increased` events. Notifications for unfollowed shops are not returned.
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 flowchart TD
@@ -202,7 +202,7 @@ SHOP#{shopId}
 - **PAGE#** stores the last seen extract (title, headings, prices, links, item snippets). It is not a structured product catalog.
 - **SALE#** is what the app shows. Fingerprints prevent duplicates; a later crawl can update the row if the discount increased.
 
-## ⚙️ Backend
+## Backend
 
 ### Scheduler
 
@@ -264,7 +264,7 @@ sale-scout-notifications
 └── notification rows (sale_detected, discount_increased)
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 sale/
@@ -287,7 +287,7 @@ sale/
     └── Makefile          crawler Lambda bundle
 ```
 
-## 📌 Project Status
+## Project Status
 
 **Version:** `0.1.0`
 

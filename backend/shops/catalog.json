@@ -1,0 +1,38 @@
+[
+  {
+    "shopId": "catalog108",
+    "name": "Catalog108 Deals",
+    "website": "https://practice.scrapingcentral.com",
+    "pagesToMonitor": [
+      "/deals",
+      "/products"
+    ],
+    "crawlStrategy": "browser",
+    "followLinkPattern": "/products/",
+    "followListingPattern": "/products?category="
+  },
+  {
+    "shopId": "dummyjson",
+    "name": "DummyJSON Store",
+    "website": "https://dummyjson.com",
+    "pagesToMonitor": ["/products"],
+    "crawlStrategy": "api",
+    "api": {
+      "itemsPath": "products",
+      "title": "title",
+      "price": "price",
+      "discountPercentage": "discountPercentage",
+      "summary": "description"
+    }
+  },
+  {
+    "shopId": "scrapify-js",
+    "name": "Scrapify JS Playground",
+    "website": "https://scrapifydatalabs.com",
+    "pagesToMonitor": [
+      "/playground/js-rendered.html",
+      "/playground/ajax-load-more.html"
+    ],
+    "crawlStrategy": "browser"
+  }
+]

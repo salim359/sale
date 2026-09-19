@@ -1,0 +1,16 @@
+{
+  "name": "sale",
+  "short_name": "sale",
+  "description": "Track the brands you love and never miss a sale.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fedfe8",
+  "theme_color": "#ff2d78",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "1774x887",
+      "type": "image/png"
+    }
+  ]
+}

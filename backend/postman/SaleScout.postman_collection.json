@@ -1,0 +1,294 @@
+{
+  "info": {
+    "name": "Sale Scout",
+    "description": "Cognito auth, shop catalog, selected shops, sales, and notifications for the sale-scout stack in us-east-1.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{idToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://ndg3qx7l22.execute-api.us-east-1.amazonaws.com/Prod"
+    },
+    {
+      "key": "shopId",
+      "value": "catalog108"
+    },
+    {
+      "key": "date",
+      "value": "2026-09-08"
+    },
+    {
+      "key": "notificationId",
+      "value": "replace-me"
+    },
+    {
+      "key": "idToken",
+      "value": ""
+    },
+    {
+      "key": "email",
+      "value": "you@example.com"
+    },
+    {
+      "key": "password",
+      "value": "ChangeMe123"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Sign up",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"name\": \"Sale Scout User\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/signup",
+            "description": "Create a Cognito user. Email confirmation is required before login."
+          }
+        },
+        {
+          "name": "Confirm signup",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"code\": \"123456\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/confirm",
+            "description": "Confirm the account with the code emailed by Cognito."
+          }
+        },
+        {
+          "name": "Resend confirmation code",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/resend"
+          }
+        },
+        {
+          "name": "Log in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.idToken) { pm.collectionVariables.set('idToken', json.idToken); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Returns idToken, accessToken, and refreshToken. Send idToken as Bearer on other APIs."
+          }
+        },
+        {
+          "name": "Refresh tokens",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        },
+        {
+          "name": "Current user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/auth/me",
+            "description": "Requires Authorization: Bearer <idToken>."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shops",
+      "item": [
+        {
+          "name": "List catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/shops/catalog",
+            "description": "Predefined shops with a selected flag. Requires login."
+          }
+        },
+        {
+          "name": "Select shops",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shopIds\": [\"catalog108\", \"dummyjson\"]\n}"
+            },
+            "url": "{{baseUrl}}/shops",
+            "description": "Add shops from the catalog to DynamoDB. Valid ids: catalog108, dummyjson, scrapify-js."
+          }
+        },
+        {
+          "name": "List selected shops",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/shops",
+            "description": "Shops currently stored in DynamoDB and crawled on schedule."
+          }
+        },
+        {
+          "name": "Remove shop",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/shops/{{shopId}}",
+            "description": "Stop monitoring a selected shop. Does not delete past sales."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sales",
+      "item": [
+        {
+          "name": "Get sales today",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/sales",
+            "description": "Detected sales for today (UTC)."
+          }
+        },
+        {
+          "name": "Get sales by date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/sales?date={{date}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["sales"],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{date}}",
+                  "description": "YYYY-MM-DD"
+                }
+              ]
+            },
+            "description": "Detected sales for a specific UTC date."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/notifications",
+            "description": "Newest sale alerts from the notifications table."
+          }
+        },
+        {
+          "name": "List unread notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?unread=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                {
+                  "key": "unread",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Unread sale alerts only."
+          }
+        },
+        {
+          "name": "Mark notification read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/notifications/{{notificationId}}/read",
+            "description": "Mark one notification as read."
+          }
+        }
+      ]
+    }
+  ]
+}

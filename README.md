@@ -66,11 +66,6 @@ http://localhost:5173
 
 The API base URL is `frontend/.env`:
 
-```bash
-VITE_API_BASE=https://mkntb4mjx9.execute-api.us-east-1.amazonaws.com/Prod
-```
-
-Override it when needed:
 
 ```bash
 VITE_API_BASE=https://your-api.example.com/Prod npm run dev

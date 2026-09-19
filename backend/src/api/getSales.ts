@@ -3,6 +3,7 @@ import type {
   APIGatewayProxyResult,
 } from "aws-lambda";
 import { getSalesByDate } from "../shared/dynamo/sales.js";
+import { getSelectedShopIds } from "../shared/dynamo/shops.js";
 import { todayDate } from "../shared/dynamo/client.js";
 import { jsonResponse } from "./http.js";
 
@@ -11,12 +12,16 @@ export const handler = async (
 ): Promise<APIGatewayProxyResult> => {
   try {
     const date = event.queryStringParameters?.date ?? todayDate();
-    const sales = await getSalesByDate(date);
+    const [sales, selectedIds] = await Promise.all([
+      getSalesByDate(date),
+      getSelectedShopIds(),
+    ]);
+    const followed = sales.filter((sale) => selectedIds.has(sale.shopId));
 
     return jsonResponse(200, {
       date,
-      count: sales.length,
-      sales: sales.map((sale) => ({
+      count: followed.length,
+      sales: followed.map((sale) => ({
         shopId: sale.shopId,
         shopName: sale.shopName,
         title: sale.title,

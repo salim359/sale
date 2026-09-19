@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -84,6 +85,42 @@ export async function listNotifications(options?: {
   );
 
   return (result.Items as NotificationRecord[]) ?? [];
+}
+
+export async function deleteNotificationsForShop(
+  shopId: string,
+): Promise<void> {
+  let startKey: Record<string, string> | undefined;
+
+  do {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: NOTIFICATIONS_TABLE_NAME,
+        IndexName: NOTIFICATIONS_INDEX,
+        KeyConditionExpression: "gsi1pk = :gsi1pk",
+        FilterExpression: "shopId = :shopId",
+        ExpressionAttributeValues: {
+          ":gsi1pk": notificationsIndexPk(),
+          ":shopId": shopId,
+        },
+        ExclusiveStartKey: startKey,
+      }),
+    );
+
+    for (const item of (result.Items as NotificationRecord[] | undefined) ?? []) {
+      await docClient.send(
+        new DeleteCommand({
+          TableName: NOTIFICATIONS_TABLE_NAME,
+          Key: {
+            pk: notificationPk(item.notificationId),
+            sk: NOTIFICATION_METADATA_SK,
+          },
+        }),
+      );
+    }
+
+    startKey = result.LastEvaluatedKey as Record<string, string> | undefined;
+  }   while (startKey);
 }
 
 export async function markNotificationRead(

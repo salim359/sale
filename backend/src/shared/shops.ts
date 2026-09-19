@@ -37,10 +37,10 @@ export function toPublicShop(shop: Shop): Shop {
     name: shop.name,
     website: shop.website,
     pagesToMonitor: shop.pagesToMonitor,
-    monitorFrequencyHours: shop.monitorFrequencyHours,
     crawlStrategy: shop.crawlStrategy,
     followLinkPattern: shop.followLinkPattern,
     followListingPattern: shop.followListingPattern,
+    api: shop.api,
   };
 }
 

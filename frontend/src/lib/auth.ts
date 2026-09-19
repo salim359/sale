@@ -1,3 +1,9 @@
+import {
+  confirmAccount,
+  loginAccount,
+  resendConfirmation,
+  signupAccount,
+} from "../api/client";
 import type { Profile } from "./storage";
 
 export class AuthError extends Error {
@@ -7,35 +13,52 @@ export class AuthError extends Error {
   }
 }
 
-interface Account {
-  name: string;
-  email: string;
-  passwordHash: string;
-}
-
-const ACCOUNTS_KEY = "sale-scout-accounts";
-
 export async function registerAccount(
   name: string,
   email: string,
   password: string,
-): Promise<Profile> {
+): Promise<{ confirmationRequired: boolean; profile: Profile }> {
   const profile = validateProfile(name, email);
-  const secret = validatePassword(password);
-  const accounts = readAccounts();
-  const key = profile.email.toLowerCase();
+  validatePassword(password);
 
-  if (accounts.some((account) => account.email.toLowerCase() === key)) {
-    throw new AuthError("An account with this email already exists.");
+  try {
+    const result = await signupAccount({
+      name: profile.name,
+      email: profile.email,
+      password,
+    });
+    return {
+      confirmationRequired: result.confirmationRequired,
+      profile,
+    };
+  } catch (error) {
+    throw toAuthError(error, "Could not create account.");
+  }
+}
+
+export async function confirmRegistration(
+  email: string,
+  code: string,
+): Promise<void> {
+  const address = email.trim().toLowerCase();
+  const trimmedCode = code.trim();
+  if (!address || !trimmedCode) {
+    throw new AuthError("Enter the confirmation code from your email.");
   }
 
-  accounts.push({
-    name: profile.name,
-    email: profile.email,
-    passwordHash: await hashPassword(secret),
-  });
-  writeAccounts(accounts);
-  return profile;
+  try {
+    await confirmAccount(address, trimmedCode);
+  } catch (error) {
+    throw toAuthError(error, "Could not confirm account.");
+  }
+}
+
+export async function resendRegistrationCode(email: string): Promise<void> {
+  try {
+    await resendConfirmation(email.trim().toLowerCase());
+  } catch (error) {
+    throw toAuthError(error, "Could not resend the confirmation code.");
+  }
 }
 
 export async function authenticateAccount(
@@ -47,17 +70,20 @@ export async function authenticateAccount(
     throw new AuthError("Enter your email and password.");
   }
 
-  const account = readAccounts().find((item) => item.email.toLowerCase() === address);
-  if (!account || account.passwordHash !== (await hashPassword(password))) {
-    throw new AuthError("Email or password is incorrect.");
+  try {
+    const user = await loginAccount(address, password);
+    return {
+      name: user.name?.trim() || address.split("@")[0] || address,
+      email: user.email ?? address,
+    };
+  } catch (error) {
+    throw toAuthError(error, "Email or password is incorrect.");
   }
-
-  return { name: account.name, email: account.email };
 }
 
 function validateProfile(name: string, email: string): Profile {
   const trimmedName = name.trim();
-  const trimmedEmail = email.trim();
+  const trimmedEmail = email.trim().toLowerCase();
   if (!trimmedName) throw new AuthError("Enter your name.");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
     throw new AuthError("Enter a valid email.");
@@ -65,30 +91,21 @@ function validateProfile(name: string, email: string): Profile {
   return { name: trimmedName, email: trimmedEmail };
 }
 
-function validatePassword(password: string): string {
-  if (password.length < 6) {
-    throw new AuthError("Password must be at least 6 characters.");
+function validatePassword(password: string): void {
+  if (password.length < 8) {
+    throw new AuthError("Password must be at least 8 characters.");
   }
-  return password;
-}
-
-function readAccounts(): Account[] {
-  const raw = localStorage.getItem(ACCOUNTS_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as Account[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+    throw new AuthError(
+      "Password must include uppercase, lowercase, and a number.",
+    );
   }
 }
 
-function writeAccounts(accounts: Account[]): void {
-  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
-}
-
-async function hashPassword(password: string): Promise<string> {
-  const bytes = new TextEncoder().encode(password);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+function toAuthError(error: unknown, fallback: string): AuthError {
+  if (error instanceof AuthError) return error;
+  if (error instanceof Error && error.message) {
+    return new AuthError(error.message);
+  }
+  return new AuthError(fallback);
 }

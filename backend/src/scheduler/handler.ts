@@ -37,6 +37,7 @@ export const handler = async (_event: ScheduledEvent): Promise<void> => {
         crawlStrategy: shop.crawlStrategy,
         followLinkPattern: shop.followLinkPattern,
         followListingPattern: shop.followListingPattern,
+        api: shop.api,
         depth: 0,
         kind: "listing",
       };

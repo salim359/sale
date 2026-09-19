@@ -1,6 +1,6 @@
-import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import {
-  DeleteCommand,
+  BatchWriteCommand,
+  GetCommand,
   PutCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
@@ -57,20 +57,54 @@ export async function getSelectedShopIds(): Promise<Set<string>> {
   return new Set(shops.map((shop) => shop.shopId));
 }
 
+export async function isShopSelected(shopId: string): Promise<boolean> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: TABLE_NAME,
+      Key: { pk: shopPk(shopId), sk: SHOP_METADATA_SK },
+    }),
+  );
+  return Boolean(result.Item);
+}
+
 export async function deleteShop(shopId: string): Promise<boolean> {
-  try {
-    await docClient.send(
-      new DeleteCommand({
+  if (!(await isShopSelected(shopId))) {
+    return false;
+  }
+
+  await deleteShopPartition(shopId);
+  return true;
+}
+
+async function deleteShopPartition(shopId: string): Promise<void> {
+  const pk = shopPk(shopId);
+  let startKey: Record<string, string> | undefined;
+
+  do {
+    const result = await docClient.send(
+      new QueryCommand({
         TableName: TABLE_NAME,
-        Key: { pk: shopPk(shopId), sk: SHOP_METADATA_SK },
-        ConditionExpression: "attribute_exists(pk)",
+        KeyConditionExpression: "pk = :pk",
+        ExpressionAttributeValues: { ":pk": pk },
+        ProjectionExpression: "pk, sk",
+        ExclusiveStartKey: startKey,
       }),
     );
-    return true;
-  } catch (error) {
-    if (error instanceof ConditionalCheckFailedException) {
-      return false;
+
+    const keys = (result.Items ?? []) as { pk: string; sk: string }[];
+    for (let i = 0; i < keys.length; i += 25) {
+      const chunk = keys.slice(i, i + 25);
+      await docClient.send(
+        new BatchWriteCommand({
+          RequestItems: {
+            [TABLE_NAME]: chunk.map((key) => ({
+              DeleteRequest: { Key: { pk: key.pk, sk: key.sk } },
+            })),
+          },
+        }),
+      );
     }
-    throw error;
-  }
+
+    startKey = result.LastEvaluatedKey as Record<string, string> | undefined;
+  } while (startKey);
 }

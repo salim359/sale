@@ -28,6 +28,30 @@ export async function getSnapshot(
   return (result.Item as PageSnapshot) ?? null;
 }
 
+export async function countSalesForShop(shopId: string): Promise<number> {
+  let count = 0;
+  let startKey: Record<string, string> | undefined;
+
+  do {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :skPrefix)",
+        ExpressionAttributeValues: {
+          ":pk": shopPk(shopId),
+          ":skPrefix": "SALE#",
+        },
+        Select: "COUNT",
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    count += result.Count ?? 0;
+    startKey = result.LastEvaluatedKey as Record<string, string> | undefined;
+  } while (startKey);
+
+  return count;
+}
+
 export async function saveSnapshot(
   shopId: string,
   pagePath: string,

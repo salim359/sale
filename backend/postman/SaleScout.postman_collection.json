@@ -17,11 +17,11 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "https://4e7nmpufi0.execute-api.us-east-1.amazonaws.com/Prod"
+      "value": "https://ndg3qx7l22.execute-api.us-east-1.amazonaws.com/Prod"
     },
     {
       "key": "shopId",
-      "value": "scrapify"
+      "value": "catalog108"
     },
     {
       "key": "date",
@@ -188,10 +188,10 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"shopIds\": [\"scrapify\", \"scrapify-js\", \"catalog108\"]\n}"
+              "raw": "{\n  \"shopIds\": [\"catalog108\", \"dummyjson\"]\n}"
             },
             "url": "{{baseUrl}}/shops",
-            "description": "Add shops from the catalog to DynamoDB. Valid ids: scrapify, scrapify-js, catalog108."
+            "description": "Add shops from the catalog to DynamoDB. Valid ids: catalog108, dummyjson, scrapify-js."
           }
         },
         {

@@ -205,7 +205,7 @@ Resources:
     Properties:
       CodeUri: .
       Handler: handler.handler
-      Description: Fetches pages, detects changes, runs AI analysis, saves sales
+      Description: Fetches HTML, JS-rendered pages, or shop JSON APIs, then saves sales
       Timeout: 120
       MemorySize: 3008
       EphemeralStorage:
@@ -214,6 +214,7 @@ Resources:
         Variables:
           HOME: /tmp
           CRAWL_QUEUE_URL: !Ref CrawlQueue
+          CHROMIUM_PACK_URL: https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.x64.tar
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SaleScoutTable
@@ -270,11 +271,13 @@ Resources:
       CodeUri: .
       Handler: src/api/shops.handler
       Description: Lists the shop catalog and saves user-selected shops
-      Timeout: 10
+      Timeout: 30
       MemorySize: 256
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SaleScoutTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotificationsTable
       Events:
         ListCatalog:
           Type: Api
@@ -328,6 +331,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref NotificationsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SaleScoutTable
       Events:
         ListNotifications:
           Type: Api

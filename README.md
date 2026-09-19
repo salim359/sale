@@ -6,15 +6,14 @@ Sale is a **watcher, not a store**. It doesn't sell products directly — when y
 
 ## ✨ Features
 
-- 🔐 Sign up and log in
-- 🏪 Discover and follow shops
-- 🔎 Search shops and products
-- 🛍️ Browse sales from followed shops
-- 💰 Detect price drops and discounts
-- ❤️ Save products and deals
-- 🔔 Receive notifications for new sales
-- 📄 View scraped product descriptions, specifications, categories, and reviews
-- 🔗 Open the original shop product page to purchase
+- 🔐 Sign up and log in (Amazon Cognito)
+- 🏪 Discover shops from a predefined catalog and follow them
+- 🛍️ Home feed shows sales **only from shops you follow**
+- 💰 Detect discounts from HTML pages, JS-rendered pages, or shop JSON APIs
+- ❤️ Save deals locally in the browser
+- 🔔 Notifications for new sales and deeper discounts
+- 🔗 Open the original shop page to purchase
+- 🚫 Unfollow a shop to stop crawling it and remove its sales from the app
 
 ## 🛠️ Tech Stack
 
@@ -32,37 +31,30 @@ Sale is a **watcher, not a store**. It doesn't sell products directly — when y
 - API Gateway
 - DynamoDB
 - Amazon SQS
+- Amazon EventBridge
 - Amazon Cognito
 
+### Crawling
 
-### Web Crawling
-
-```md
-
-- Product information is collected from supported shop websites
-- The crawler Lambda fetches pages with a plain HTTP request, or with **puppeteer-core** and **@sparticuz/chromium** when a shop needs a real browser (`crawlStrategy: "browser"`)
-- After HTML is fetched, Cheerio extracts headings, prices, and promo text
-- The frontend development server proxies HTML requests to avoid browser CORS restrictions
-- Crawled data includes product images, descriptions, categories, specifications, reviews, and pricing information
-```
-
+- `http` / `https` — Node `fetch` + Cheerio
+- `browser` — `puppeteer-core` + `@sparticuz/chromium-min` for JS-rendered shops
+- `api` — JSON catalog fetch with field mapping (no OpenAI)
 
 ## 🚀 Getting Started
 
+The app lives under `frontend/`. The API lives under `backend/`.
+
 ### Prerequisites
 
-- Node.js
+- Node.js 20+
 - npm
+- AWS CLI + SAM CLI (to deploy the backend)
 
-### Install
+### Frontend
 
 ```bash
+cd frontend
 npm install
-```
-
-### Start the development server
-
-```bash
 npm run dev
 ```
 
@@ -72,201 +64,236 @@ The app will be available at:
 http://localhost:5173
 ```
 
-### Build for production
+The API base URL is `frontend/.env`:
 
 ```bash
-npm run build
+VITE_API_BASE=https://mkntb4mjx9.execute-api.us-east-1.amazonaws.com/Prod
 ```
 
-### Preview the production build
-
-```bash
-npm run preview
-```
-
-## 🔌 API Configuration
-
-The frontend uses the Sale API for shops, sales, authentication, saved items, and notifications.
-
-You can override the API endpoint using:
+Override it when needed:
 
 ```bash
 VITE_API_BASE=https://your-api.example.com/Prod npm run dev
 ```
 
-Default API:
+Restart Vite after changing `.env`.
+
+### Backend
+
+```bash
+cd backend
+npm install
+npm test
+npm run deploy
+```
+
+`npm run deploy` runs `sam build && sam deploy`. After a new stack, copy the `ApiUrl` output (without `/sales`) into `frontend/.env`.
+
+## 🔌 Deployed API
+
+Stack `sale-scout` in `us-east-1`:
 
 ```text
-https://4e7nmpufi0.execute-api.us-east-1.amazonaws.com/Prod
+API            https://mkntb4mjx9.execute-api.us-east-1.amazonaws.com/Prod
+Catalog        https://mkntb4mjx9.execute-api.us-east-1.amazonaws.com/Prod/shops/catalog
+Shops          https://mkntb4mjx9.execute-api.us-east-1.amazonaws.com/Prod/shops
+Sales          https://mkntb4mjx9.execute-api.us-east-1.amazonaws.com/Prod/sales
+Notifications  https://mkntb4mjx9.execute-api.us-east-1.amazonaws.com/Prod/notifications
+Signup         https://mkntb4mjx9.execute-api.us-east-1.amazonaws.com/Prod/auth/signup
+Login          https://mkntb4mjx9.execute-api.us-east-1.amazonaws.com/Prod/auth/login
+User pool      us-east-1_K7Sch2j5P
+App client     3ql4tkej8atd6n5m7hsosruqto
 ```
+
+Auth, shops, sales, and notifications all use that API base. A new Cognito pool means previous accounts do not carry over — sign up again.
 
 ## 📱 What Sale Does
 
-### Follow Shops
+### Follow shops
 
-Users can browse the shop catalog and follow the stores they are interested in.
+The catalog is defined in `backend/shops/catalog.json` and **bundled into Lambda at deploy time**. It is not editable in the AWS console. Change the file locally and redeploy.
 
-### Discover Sales
+Current catalog shops:
 
-The home feed displays sales detected from followed shops.
+| shopId | Strategy | Site |
+| --- | --- | --- |
+| `catalog108` | `browser` | practice.scrapingcentral.com |
+| `dummyjson` | `api` | dummyjson.com/products |
+| `scrapify-js` | `browser` | scrapifydatalabs.com playground |
 
-### Product Details
+Following a shop writes its metadata to DynamoDB. That does **not** crawl immediately. EventBridge runs the scheduler every **4 hours**, which enqueues SQS jobs for followed shops only.
 
-Product pages can display information collected from the original shop, including:
+### Discover sales
 
-- Product images
-- Description
-- Specifications
-- Categories
-- Reviews
-- Current price
-- Original price
-- Discount information
+The home feed, saved list, and notifications show data from **followed shops only**.
 
-### Saved Items
+### Unfollow
 
-Users can save products and deals for later.
+Unfollowing:
 
-**Price Drops** highlights saved products with a discount of **30% or more from the original price**.
+1. Deletes the shop partition (`METADATA`, `PAGE#` snapshots, `SALE#` rows)
+2. Deletes that shop’s notifications
+3. Makes the crawler skip leftover SQS jobs for that shop
+4. Removes the shop and its sales from the app immediately
+
+### Product details
+
+The frontend can fetch a product page (via the Vite proxy) to show description, images, categories, specs, and reviews when the shop HTML includes them. Purchase still happens on the original shop site.
+
+### Saved items
+
+Saved deals are stored in the browser. Unfollowing a shop removes its saved items from the list.
 
 ### Notifications
 
-Sale can retrieve notifications through:
-
 ```http
 GET /notifications
+POST /notifications/{notificationId}/read
 ```
 
-Notifications are marked as read when opened.
+Unread badges come from `sale_detected` and `discount_increased` events. Notifications for unfollowed shops are not returned.
 
 ## 🏗️ Architecture
+
 ```mermaid
 flowchart TD
-  EB[EventBridge every 4 hours] --> SCH[Scheduler Lambda]
-  DDB[(DynamoDB<br/>shops / snapshots / sales)] --> SCH
-  SCH --> SQS[SQS crawl queue]
-  SQS --> CR[Crawler Lambda]
-  CR --> WEB[Shop websites]
-  WEB --> CR
-  CR -->|hash vs snapshot<br/>keyword filter<br/>OpenAI sale analysis| DDB
-  CR -->|sale_detected / discount_increased| NTF[(DynamoDB notifications)]
-  DDB --> APIGW[API Gateway + Cognito]
-  NTF --> APIGW
+  APP[React SPA] --> APIGW[API Gateway + Cognito]
   APIGW --> AUTH["/auth"]
   APIGW --> SHOPS["/shops"]
   APIGW --> SALES["/sales"]
   APIGW --> NOTES["/notifications"]
-  AUTH --> APP[React SPA sale]
-  SHOPS --> APP
-  SALES --> APP
-  NOTES --> APP
+
+  SHOPS --> DDB[(DynamoDB sale-scout-table)]
+  SALES --> DDB
+  NOTES --> NTF[(DynamoDB sale-scout-notifications)]
+
+  EB[EventBridge every 4 hours] --> SCH[Scheduler Lambda]
+  DDB --> SCH
+  SCH -->|followed shops only| SQS[SQS crawl queue]
+  SQS --> CR[Crawler Lambda]
+  CR -->|skip if unfollowed| DDB
+  CR --> WEB[Shop site HTTP / Chromium / JSON API]
+  WEB --> CR
+  CR -->|hash vs PAGE snapshot<br/>keyword filter<br/>OpenAI or API mapping<br/>max 10 sales per shop| DDB
+  CR -->|sale_detected / discount_increased| NTF
 ```
+
+### Shop → Pages → Sales
+
+```text
+Follow shop
+  → SHOP#{id} / METADATA
+  → Scheduler (every 4h) enqueues pagesToMonitor
+  → Crawler fetches each page
+  → Extract + hash; skip if PAGE# snapshot unchanged
+  → Detect discounts (OpenAI or API mapping)
+  → Write PAGE# snapshot
+  → Write SALE# rows (≤10) + notification
+  → Optionally enqueue product/category links
+```
+
+Single-table layout:
+
+```text
+SHOP#{shopId}
+ ├── METADATA          crawl config for a followed shop
+ ├── PAGE#/deals       last extracted snapshot + content hash
+ ├── PAGE#/products
+ ├── SALE#{date}#{fp}  detected discount
+ └── SALE#{date}#{fp}
+```
+
+- **METADATA** controls what to crawl.
+- **PAGE#** stores the last seen extract (title, headings, prices, links, item snippets). It is not a structured product catalog.
+- **SALE#** is what the app shows. Fingerprints prevent duplicates; a later crawl can update the row if the discount increased.
 
 ## ⚙️ Backend
 
-The backend is located in the `backend` project and is built using AWS SAM.
-
 ### Scheduler
 
-Runs every **4 hours** and creates crawl jobs for shops that users follow.
+Loads followed shops from DynamoDB and enqueues one SQS job per `pagesToMonitor` path. If nobody is following a shop, it is not crawled.
 
 ### Crawler
 
-```md
-
-The crawler:
-
-1. Fetches shop/product pages (HTTP `fetch`, or headless Chromium via Puppeteer)
-2. Extracts product information
-3. Detects changes in pricing and product data
-4. Analyzes potential sales
-5. Stores updated data
-6. Creates notifications when relevant sales are detected
+1. Skip the job if the shop is no longer followed
+2. Fetch the page:
+   - `http` / `https` — plain fetch
+   - `browser` — headless Chromium (downloads `chromium-v153.0.0-pack.x64.tar` at runtime)
+   - `api` — JSON fetch + `api` field mapping
+3. Extract content (Cheerio for HTML)
+4. SHA-256 compare against the previous `PAGE#` snapshot — skip if unchanged
+5. Keyword pre-filter (HTML shops)
+6. OpenAI (`gpt-4o-mini`) for HTML shops, or mapped discounts for API shops
+7. Save at most **10 sales per shop**, then enqueue matching follow links if slots remain
 
 Browser crawls use:
 
-- `puppeteer-core` to control the browser
-- `@sparticuz/chromium` as the Chromium binary on Lambda
+- `puppeteer-core`
+- `@sparticuz/chromium-min` (remote pack, not the full Chromium zip)
 
-That path waits for product cards, clicks “load more” when present, then returns the rendered HTML. Shops that do not need JavaScript keep the cheaper HTTP fetch.
-```
-```md
-- puppeteer-core
-- @sparticuz/chromium
-- Cheerio
-- OpenAI (gpt-4o-mini)
+Pack URL:
+
+```text
+https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.x64.tar
 ```
 
 ### Authentication
 
-Authentication is handled through **Amazon Cognito**.
+```text
+POST /auth/signup
+POST /auth/confirm
+POST /auth/login
+POST /auth/refresh
+POST /auth/resend
+GET  /auth/me
+```
 
-Available endpoints include:
+### Shops
 
 ```text
-/auth/signup
-/auth/confirm
-/auth/login
+GET    /shops/catalog
+GET    /shops
+POST   /shops                 { "shopIds": ["catalog108"] }
+DELETE /shops/{shopId}
 ```
 
 ### Database
 
-The application uses DynamoDB tables for:
-
 ```text
-{stack}-table
-├── shops
-├── snapshots
-└── sales
+sale-scout-table
+├── SHOP#{id} / METADATA
+├── SHOP#{id} / PAGE#{path}
+└── SHOP#{id} / SALE#{date}#{fingerprint}
 
-{stack}-notifications
+sale-scout-notifications
+└── notification rows (sale_detected, discount_increased)
 ```
-
-### Queueing
-
-Amazon SQS is used to distribute and process crawling jobs.
 
 ## 📁 Project Structure
 
 ```text
-src/
-├── api/          API client and types
-├── context/      Application state
-│                 ├── shops
-│                 ├── sales
-│                 ├── saved items
-│                 ├── notifications
-│                 └── authentication
-├── lib/          Scraping, authentication, utilities
-├── screens/      Application screens
-│                 ├── Welcome
-│                 ├── Login
-│                 ├── Signup
-│                 ├── Home
-│                 ├── Shop
-│                 ├── Item
-│                 ├── Saved
-│                 ├── Search
-│                 └── Profile
-└── components/   Shared UI components
-```
-
-## ☁️ Deploying the Backend
-
-From the backend project:
-
-```bash
-cd ../sale
-
-npm install
-
-sam build
-
-sam deploy
+sale/
+├── frontend/
+│   ├── src/
+│   │   ├── api/          API client and types
+│   │   ├── context/      shops, sales, saved, notifications, auth
+│   │   ├── lib/          auth, storage, product-page HTML parse
+│   │   ├── screens/      Welcome, Login, Signup, Home, Shop, Item, Saved, Search, Profile
+│   │   └── components/
+│   └── .env              VITE_API_BASE
+└── backend/
+    ├── shops/catalog.json
+    ├── src/
+    │   ├── scheduler/    EventBridge → SQS
+    │   ├── crawler/      SQS → fetch, hash, detect, save
+    │   ├── api/          auth, shops, sales, notifications
+    │   └── shared/       extractors, DynamoDB, AI, limits
+    ├── template.yaml
+    └── Makefile          crawler Lambda bundle
 ```
 
 ## 📌 Project Status
 
 **Version:** `0.1.0`
 
-Sale is currently under active development as a prototype for automated shopping-sale discovery and monitoring.
+Sale is a prototype for automated shopping-sale discovery and monitoring.

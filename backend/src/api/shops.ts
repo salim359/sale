@@ -9,6 +9,7 @@ import {
   getSelectedShopIds,
   upsertShop,
 } from "../shared/dynamo/shops.js";
+import { deleteNotificationsForShop } from "../shared/dynamo/notifications.js";
 import {
   loadCatalogShops,
   resolveCatalogShops,
@@ -113,5 +114,6 @@ async function removeShop(
     return jsonResponse(404, { message: `Shop ${shopId} is not selected` });
   }
 
+  await deleteNotificationsForShop(shopId);
   return jsonResponse(200, { shopId, removed: true });
 }

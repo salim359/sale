@@ -24,7 +24,15 @@ const KEYS = {
   profile: "sale-scout-profile",
   saved: "sale-scout-saved",
   alerts: "sale-scout-alerts",
+  tokens: "sale-scout-tokens",
 } as const;
+
+export interface StoredTokens {
+  idToken: string;
+  accessToken: string;
+  refreshToken: string;
+  email: string;
+}
 
 export function readOnboarded(): boolean {
   return localStorage.getItem(KEYS.onboarded) === "1";
@@ -72,6 +80,26 @@ export function readAlertsEnabled(): boolean {
 
 export function writeAlertsEnabled(value: boolean): void {
   localStorage.setItem(KEYS.alerts, value ? "1" : "0");
+}
+
+export function readTokens(): StoredTokens | null {
+  const raw = localStorage.getItem(KEYS.tokens);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as StoredTokens;
+    if (!parsed.idToken || !parsed.refreshToken || !parsed.email) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function writeTokens(tokens: StoredTokens | null): void {
+  if (!tokens) {
+    localStorage.removeItem(KEYS.tokens);
+    return;
+  }
+  localStorage.setItem(KEYS.tokens, JSON.stringify(tokens));
 }
 
 export function saleToSaved(sale: Sale, image?: string): SavedItem {

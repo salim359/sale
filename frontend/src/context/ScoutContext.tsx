@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  ApiError,
   getCatalog,
   getNotifications,
   getSales,
@@ -18,17 +19,24 @@ import {
 } from "../api/client";
 import type { Notification, Sale, Shop } from "../api/types";
 import { utcDateString } from "../lib/format";
-import { authenticateAccount, registerAccount } from "../lib/auth";
+import {
+  authenticateAccount,
+  confirmRegistration,
+  registerAccount,
+  resendRegistrationCode,
+} from "../lib/auth";
 import {
   readAlertsEnabled,
   readOnboarded,
   readProfile,
   readSaved,
+  readTokens,
   saleToSaved,
   writeAlertsEnabled,
   writeOnboarded,
   writeProfile,
   writeSaved,
+  writeTokens,
   type Profile,
   type SavedItem,
 } from "../lib/storage";
@@ -51,8 +59,10 @@ interface ScoutState {
   markRead: (notificationId: string) => Promise<void>;
   toggleSaved: (item: SavedItem) => void;
   isSaved: (id: string) => boolean;
-  signup: (name: string, email: string, password: string) => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string) => Promise<{ confirmationRequired: boolean }>;
+  confirmSignup: (email: string, code: string) => Promise<void>;
+  resendSignupCode: (email: string) => Promise<void>;
+  login: (email: string, password: string, options?: { completeOnboarding?: boolean }) => Promise<void>;
   completeOnboarding: (profile?: Profile) => void;
   logout: () => void;
   setAlertsEnabled: (value: boolean) => void;
@@ -92,9 +102,18 @@ export function ScoutProvider({ children }: { children: ReactNode }) {
       ]);
       setCatalog(catalogRes.shops);
       setSelected(selectedRes.shops);
-      setSales(salesRes.sales);
-      setNotifications(notificationsRes.notifications);
+      const followedIds = new Set(selectedRes.shops.map((shop) => shop.shopId));
+      setSales(salesRes.sales.filter((sale) => followedIds.has(sale.shopId)));
+      setNotifications(
+        notificationsRes.notifications.filter((item) => followedIds.has(item.shopId)),
+      );
+      setSaved((current) => current.filter((item) => followedIds.has(item.shopId)));
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        writeTokens(null);
+        setOnboarded(false);
+        writeOnboarded(false);
+      }
       setError(err instanceof Error ? err.message : "Could not load sale");
     } finally {
       setLoading(false);
@@ -102,6 +121,14 @@ export function ScoutProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!readTokens()?.idToken) {
+      if (readOnboarded()) {
+        writeOnboarded(false);
+        setOnboarded(false);
+      }
+      setLoading(false);
+      return;
+    }
     void refresh();
   }, [refresh]);
 
@@ -120,6 +147,17 @@ export function ScoutProvider({ children }: { children: ReactNode }) {
   const unfollow = useCallback(
     async (shopId: string) => {
       await removeShop(shopId);
+      setSaved((current) => current.filter((item) => item.shopId !== shopId));
+      setSales((current) => current.filter((sale) => sale.shopId !== shopId));
+      setNotifications((current) =>
+        current.filter((item) => item.shopId !== shopId),
+      );
+      setSelected((current) => current.filter((shop) => shop.shopId !== shopId));
+      setCatalog((current) =>
+        current.map((shop) =>
+          shop.shopId === shopId ? { ...shop, selected: false } : shop,
+        ),
+      );
       await refresh();
     },
     [refresh],
@@ -152,26 +190,46 @@ export function ScoutProvider({ children }: { children: ReactNode }) {
   );
 
   const signup = useCallback(async (name: string, email: string, password: string) => {
-    const nextProfile = await registerAccount(name, email, password);
-    setProfile(nextProfile);
-    writeProfile(nextProfile);
+    const result = await registerAccount(name, email, password);
+    setProfile(result.profile);
+    writeProfile(result.profile);
     setOnboarded(false);
     writeOnboarded(false);
+    return { confirmationRequired: result.confirmationRequired };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const confirmSignup = useCallback(async (email: string, code: string) => {
+    await confirmRegistration(email, code);
+  }, []);
+
+  const resendSignupCode = useCallback(async (email: string) => {
+    await resendRegistrationCode(email);
+  }, []);
+
+  const login = useCallback(async (
+    email: string,
+    password: string,
+    options?: { completeOnboarding?: boolean },
+  ) => {
     const nextProfile = await authenticateAccount(email, password);
     setProfile(nextProfile);
     writeProfile(nextProfile);
-    setOnboarded(true);
-    writeOnboarded(true);
-  }, []);
+    const done = options?.completeOnboarding ?? true;
+    setOnboarded(done);
+    writeOnboarded(done);
+    await refresh();
+  }, [refresh]);
 
   const logout = useCallback(() => {
     setOnboarded(false);
     setProfile(null);
     writeOnboarded(false);
     writeProfile(null);
+    writeTokens(null);
+    setCatalog([]);
+    setSelected([]);
+    setSales([]);
+    setNotifications([]);
   }, []);
 
   const setAlertsEnabled = useCallback((value: boolean) => {
@@ -215,6 +273,8 @@ export function ScoutProvider({ children }: { children: ReactNode }) {
       toggleSaved,
       isSaved,
       signup,
+      confirmSignup,
+      resendSignupCode,
       login,
       completeOnboarding,
       logout,
@@ -239,6 +299,8 @@ export function ScoutProvider({ children }: { children: ReactNode }) {
       toggleSaved,
       isSaved,
       signup,
+      confirmSignup,
+      resendSignupCode,
       login,
       completeOnboarding,
       logout,

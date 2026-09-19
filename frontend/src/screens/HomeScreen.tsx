@@ -8,11 +8,11 @@ import { formatDetectedAt } from "../lib/format";
 
 export default function HomeScreen() {
   const navigate = useNavigate();
-  const { selected, sales, catalog, loading, error, refresh, unreadCount } = useScout();
+  const { selected, sales, loading, error, refresh, unreadCount } = useScout();
   const items = featuredItems(sales);
   const feature = items[0];
   const updates = items.slice(feature ? 1 : 0);
-  const shops = selected.length > 0 ? selected : catalog.filter((shop) => shop.selected);
+  const shops = selected;
 
   return (
     <div className="screen">

@@ -1,6 +1,10 @@
-import chromium from "@sparticuz/chromium";
+import chromium from "@sparticuz/chromium-min";
 import puppeteer from "puppeteer-core";
 import { DEFAULT_USER_AGENT } from "./fetchPage.js";
+
+const CHROMIUM_PACK_ARCH = process.arch === "arm64" ? "arm64" : "x64";
+const DEFAULT_CHROMIUM_PACK_URL =
+  `https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.${CHROMIUM_PACK_ARCH}.tar`;
 
 const GOTO_TIMEOUT_MS = 25_000;
 const READY_TIMEOUT_MS = 12_000;
@@ -21,7 +25,10 @@ export async function fetchRenderedPage(url: string): Promise<string> {
   chromium.setGraphicsMode = false;
 
   const executablePath =
-    process.env.CHROME_EXECUTABLE_PATH ?? (await chromium.executablePath());
+    process.env.CHROME_EXECUTABLE_PATH ??
+    (await chromium.executablePath(
+      process.env.CHROMIUM_PACK_URL ?? DEFAULT_CHROMIUM_PACK_URL,
+    ));
 
   const browser = await puppeteer.launch({
     args: await puppeteer.defaultArgs({

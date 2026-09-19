@@ -7,6 +7,7 @@ import {
   markNotificationRead,
   toPublicNotification,
 } from "../shared/dynamo/notifications.js";
+import { getSelectedShopIds } from "../shared/dynamo/shops.js";
 import { emptyResponse, jsonResponse } from "./http.js";
 
 export const handler = async (
@@ -45,12 +46,16 @@ async function list(
   unread: string | undefined,
 ): Promise<APIGatewayProxyResult> {
   const unreadOnly = unread === "true" || unread === "1";
-  const notifications = await listNotifications({ unreadOnly });
+  const [notifications, selectedIds] = await Promise.all([
+    listNotifications({ unreadOnly }),
+    getSelectedShopIds(),
+  ]);
+  const followed = notifications.filter((item) => selectedIds.has(item.shopId));
 
   return jsonResponse(200, {
-    count: notifications.length,
-    unreadCount: notifications.filter((item) => !item.read).length,
-    notifications: notifications.map(toPublicNotification),
+    count: followed.length,
+    unreadCount: followed.filter((item) => !item.read).length,
+    notifications: followed.map(toPublicNotification),
   });
 }
 

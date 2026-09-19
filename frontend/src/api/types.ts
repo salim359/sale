@@ -1,11 +1,10 @@
-export type CrawlStrategy = "http" | "https" | "browser";
+export type CrawlStrategy = "http" | "https" | "api" | "browser";
 
 export interface Shop {
   shopId: string;
   name: string;
   website: string;
   pagesToMonitor: string[];
-  monitorFrequencyHours: number;
   crawlStrategy: CrawlStrategy;
   followLinkPattern?: string;
   selected?: boolean;
@@ -67,4 +66,24 @@ export interface ApiErrorBody {
   message?: string;
   error?: string;
   unknown?: string[];
+}
+
+export interface SignupResponse {
+  userSub: string;
+  confirmationRequired: boolean;
+  message?: string;
+}
+
+export interface AuthTokens {
+  idToken: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  tokenType: string;
+}
+
+export interface AuthUser {
+  sub: string;
+  email: string | null;
+  name: string | null;
 }

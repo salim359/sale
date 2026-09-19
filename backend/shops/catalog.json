@@ -1,15 +1,29 @@
 [
   {
-    "shopId": "scrapify",
-    "name": "Scrapify Playground",
-    "website": "https://scrapifydatalabs.com",
+    "shopId": "catalog108",
+    "name": "Catalog108 Deals",
+    "website": "https://practice.scrapingcentral.com",
     "pagesToMonitor": [
-      "/playground/static-products.html",
-      "/playground/ecommerce/"
+      "/deals",
+      "/products"
     ],
-    "monitorFrequencyHours": 4,
-    "crawlStrategy": "https",
-    "followLinkPattern": "/playground/ecommerce/product-"
+    "crawlStrategy": "browser",
+    "followLinkPattern": "/products/",
+    "followListingPattern": "/products?category="
+  },
+  {
+    "shopId": "dummyjson",
+    "name": "DummyJSON Store",
+    "website": "https://dummyjson.com",
+    "pagesToMonitor": ["/products"],
+    "crawlStrategy": "api",
+    "api": {
+      "itemsPath": "products",
+      "title": "title",
+      "price": "price",
+      "discountPercentage": "discountPercentage",
+      "summary": "description"
+    }
   },
   {
     "shopId": "scrapify-js",
@@ -19,20 +33,6 @@
       "/playground/js-rendered.html",
       "/playground/ajax-load-more.html"
     ],
-    "monitorFrequencyHours": 4,
     "crawlStrategy": "browser"
-  },
-  {
-    "shopId": "catalog108",
-    "name": "Catalog108 Deals",
-    "website": "https://practice.scrapingcentral.com",
-    "pagesToMonitor": [
-      "/deals",
-      "/products"
-    ],
-    "monitorFrequencyHours": 4,
-    "crawlStrategy": "https",
-    "followLinkPattern": "/products/",
-    "followListingPattern": "/products?category="
   }
 ]

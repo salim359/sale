@@ -164,8 +164,12 @@ export default function ShopScreen() {
           )}
 
           {tab === "sales" && !feature && (
-            <EmptyState title="No sales yet">
-              <p>sale is watching this shop. New drops will show up here.</p>
+            <EmptyState title={following ? "No sales yet" : "Not following this shop"}>
+              <p>
+                {following
+                  ? "sale is watching this shop. New drops will show up here."
+                  : "Follow this shop to see its sales. Unfollowed shops are removed from your feed."}
+              </p>
             </EmptyState>
           )}
 

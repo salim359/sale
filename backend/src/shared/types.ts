@@ -1,14 +1,24 @@
-export type CrawlStrategy = "http" | "https" | "browser";
+export type CrawlStrategy = "http" | "https" | "api" | "browser";
+
+export interface ShopApiMapping {
+  itemsPath?: string;
+  title: string;
+  price: string;
+  originalPrice?: string;
+  discountPercentage?: string;
+  url?: string;
+  summary?: string;
+}
 
 export interface Shop {
   shopId: string;
   name: string;
   website: string;
   pagesToMonitor: string[];
-  monitorFrequencyHours: number;
   crawlStrategy: CrawlStrategy;
   followLinkPattern?: string;
   followListingPattern?: string;
+  api?: ShopApiMapping;
 }
 
 export interface CrawlJob {
@@ -19,6 +29,7 @@ export interface CrawlJob {
   crawlStrategy: CrawlStrategy;
   followLinkPattern?: string;
   followListingPattern?: string;
+  api?: ShopApiMapping;
   depth?: number;
   kind?: "listing" | "detail";
 }
@@ -67,6 +78,7 @@ export interface SaleItem {
   saleType?: SaleType;
   discountPercentage?: number;
   confidence: number;
+  url?: string;
 }
 
 export interface SaleAnalysis {

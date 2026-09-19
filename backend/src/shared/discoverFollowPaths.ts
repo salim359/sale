@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 
-const MAX_FOLLOW_LINKS = 100;
+const MAX_FOLLOW_LINKS = 10;
 
 export type FollowKind = "listing" | "detail";
 

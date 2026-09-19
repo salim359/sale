@@ -1,0 +1,31 @@
+{
+  "name": "sale-scout",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "sam build",
+    "deploy": "sam deploy",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.750.0",
+    "@aws-sdk/client-dynamodb": "^3.750.0",
+    "@aws-sdk/client-sqs": "^3.750.0",
+    "@aws-sdk/client-ssm": "^3.750.0",
+    "@aws-sdk/lib-dynamodb": "^3.750.0",
+    "@sparticuz/chromium": "^153.0.0",
+    "cheerio": "^1.0.0",
+    "esbuild": "^0.28.2",
+    "openai": "^4.85.0",
+    "puppeteer-core": "^25.11.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.147",
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,467 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Sale Scout - website monitoring and AI sale detection pipeline
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures:
+      - x86_64
+    Timeout: 60
+    MemorySize: 512
+    LoggingConfig:
+      LogFormat: JSON
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref SaleScoutTable
+        NOTIFICATIONS_TABLE_NAME: !Ref NotificationsTable
+        OPENAI_API_KEY_PARAM: /sale-scout/openai-api-key
+        OPENAI_MODEL: gpt-4o-mini
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,Authorization'"
+      AllowOrigin: "'*'"
+
+Resources:
+  SaleScoutTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-table"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: SalesByDateIndex
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  NotificationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-notifications"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: NotificationsByTimeIndex
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  CrawlDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+
+  CrawlQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 180
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt CrawlDLQ.Arn
+        maxReceiveCount: 3
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}-users"
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireUppercase: true
+          RequireSymbols: false
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+        - Name: name
+          Required: false
+          Mutable: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${AWS::StackName}-web"
+      UserPoolId: !Ref UserPool
+      GenerateSecret: true
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  SaleScoutApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'GET,POST,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt UserPool.Arn
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+
+  SchedulerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src/scheduler/handler.handler
+      Description: Enqueues crawl jobs for user-selected shops on schedule
+      Timeout: 30
+      Environment:
+        Variables:
+          CRAWL_QUEUE_URL: !Ref CrawlQueue
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SaleScoutTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt CrawlQueue.QueueName
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(4 hours)
+            Description: Enqueue website crawl jobs every 4 hours
+            Enabled: true
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/scheduler/handler.ts
+
+  CrawlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: handler.handler
+      Description: Fetches pages, detects changes, runs AI analysis, saves sales
+      Timeout: 120
+      MemorySize: 3008
+      EphemeralStorage:
+        Size: 1024
+      Environment:
+        Variables:
+          HOME: /tmp
+          CRAWL_QUEUE_URL: !Ref CrawlQueue
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SaleScoutTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotificationsTable
+        - SSMParameterWithSlashPrefixReadPolicy:
+            ParameterName: /sale-scout/openai-api-key
+        - SQSPollerPolicy:
+            QueueName: !GetAtt CrawlQueue.QueueName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt CrawlQueue.QueueName
+      Events:
+        CrawlQueueEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CrawlQueue.Arn
+            BatchSize: 1
+            Enabled: true
+    Metadata:
+      BuildMethod: makefile
+
+  GetSalesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src/api/getSales.handler
+      Description: Returns detected sales for a given date
+      Timeout: 10
+      MemorySize: 256
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref SaleScoutTable
+      Events:
+        GetSales:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /sales
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/api/getSales.ts
+
+  ShopsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src/api/shops.handler
+      Description: Lists the shop catalog and saves user-selected shops
+      Timeout: 10
+      MemorySize: 256
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SaleScoutTable
+      Events:
+        ListCatalog:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /shops/catalog
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+        ListSelected:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /shops
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+        SelectShops:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /shops
+            Method: post
+            Auth:
+              Authorizer: CognitoAuthorizer
+        RemoveShop:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /shops/{shopId}
+            Method: delete
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/api/shops.ts
+
+  NotificationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src/api/notifications.handler
+      Description: Lists sale notifications and marks them read
+      Timeout: 10
+      MemorySize: 256
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotificationsTable
+      Events:
+        ListNotifications:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /notifications
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+        MarkNotificationRead:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /notifications/{notificationId}/read
+            Method: post
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/api/notifications.ts
+
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src/api/auth.handler
+      Description: Cognito signup, login, confirm, and token refresh
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          USER_POOL_CLIENT_ID: !Ref UserPoolClient
+          USER_POOL_CLIENT_SECRET: !GetAtt UserPoolClient.ClientSecret
+      Events:
+        Signup:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /auth/signup
+            Method: post
+            Auth:
+              Authorizer: NONE
+        Confirm:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /auth/confirm
+            Method: post
+            Auth:
+              Authorizer: NONE
+        Login:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /auth/login
+            Method: post
+            Auth:
+              Authorizer: NONE
+        Refresh:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /auth/refresh
+            Method: post
+            Auth:
+              Authorizer: NONE
+        Resend:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /auth/resend
+            Method: post
+            Auth:
+              Authorizer: NONE
+        Me:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SaleScoutApi
+            Path: /auth/me
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        Sourcemap: true
+        EntryPoints:
+          - src/api/auth.ts
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${SaleScoutApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/sales"
+  AuthSignupUrl:
+    Description: Signup URL
+    Value: !Sub "https://${SaleScoutApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/signup"
+  AuthLoginUrl:
+    Description: Login URL
+    Value: !Sub "https://${SaleScoutApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/auth/login"
+  ShopsCatalogUrl:
+    Description: Predefined shop catalog URL
+    Value: !Sub "https://${SaleScoutApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/shops/catalog"
+  SelectedShopsUrl:
+    Description: Selected shops URL
+    Value: !Sub "https://${SaleScoutApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/shops"
+  SaleScoutTableName:
+    Description: DynamoDB table name
+    Value: !Ref SaleScoutTable
+  NotificationsTableName:
+    Description: Notifications DynamoDB table name
+    Value: !Ref NotificationsTable
+  NotificationsUrl:
+    Description: Sale notifications URL
+    Value: !Sub "https://${SaleScoutApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/notifications"
+  UserPoolId:
+    Description: Cognito user pool ID
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito app client ID
+    Value: !Ref UserPoolClient
+  CrawlQueueUrl:
+    Description: SQS crawl queue URL
+    Value: !Ref CrawlQueue
+  SchedulerFunctionArn:
+    Description: Scheduler Lambda ARN
+    Value: !GetAtt SchedulerFunction.Arn
+  CrawlerFunctionArn:
+    Description: Crawler Lambda ARN
+    Value: !GetAtt CrawlerFunction.Arn
